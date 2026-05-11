@@ -268,6 +268,7 @@ TABLE_SQL = [
         `permission_type` VARCHAR(50) DEFAULT NULL COMMENT '权限类型：page/action/data',
         `allowed` TINYINT DEFAULT 1 COMMENT '是否允许：0禁止 1允许',
         `scope` VARCHAR(50) DEFAULT NULL COMMENT '权限范围：self/all/project',
+        `status` VARCHAR(20) DEFAULT 'active' COMMENT '状态：active/disabled',
         `created_at` DATETIME DEFAULT CURRENT_TIMESTAMP COMMENT '创建时间',
         `updated_at` DATETIME DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP COMMENT '更新时间',
         PRIMARY KEY (`id`)
@@ -455,6 +456,19 @@ def _index_exists(cursor, database_name: str, table_name: str, index_name: str) 
     return cursor.fetchone() is not None
 
 
+def _column_exists(cursor, database_name: str, table_name: str, column_name: str) -> bool:
+    cursor.execute(
+        """
+        SELECT 1
+        FROM information_schema.columns
+        WHERE table_schema = %s AND table_name = %s AND column_name = %s
+        LIMIT 1
+        """,
+        (database_name, table_name, column_name),
+    )
+    return cursor.fetchone() is not None
+
+
 def _create_index_if_not_exists(cursor, database_name: str, table_name: str, index_name: str, columns: str) -> bool:
     if _index_exists(cursor, database_name, table_name, index_name):
         return False
@@ -485,6 +499,38 @@ def setup_database() -> None:
 
         for table_sql in TABLE_SQL:
             cursor.execute(table_sql)
+
+        columns_to_add = [
+            ("users", "join_date", "DATE DEFAULT NULL COMMENT '加入日期'"),
+            ("projects", "pm_id", "INT DEFAULT NULL COMMENT '项目经理ID'"),
+            ("projects", "team_id", "INT DEFAULT NULL COMMENT '归属团队ID'"),
+            ("projects", "project_template_id", "INT DEFAULT NULL COMMENT '项目模板ID'"),
+            ("tasks", "assignee_id", "INT DEFAULT NULL COMMENT '负责人ID'"),
+            ("tasks", "milestone_id", "INT DEFAULT NULL COMMENT '关联里程碑ID'"),
+            ("tasks", "dependency_task_id", "INT DEFAULT NULL COMMENT '主依赖任务ID'"),
+            ("project_members", "user_id", "INT NOT NULL COMMENT '用户ID'"),
+            ("daily_reports", "report_date", "DATE NOT NULL COMMENT '日报日期'"),
+            ("notifications", "is_read", "TINYINT DEFAULT 0 COMMENT '是否已读'"),
+            ("notifications", "type", "VARCHAR(50) DEFAULT NULL COMMENT '类型'"),
+            ("notifications", "category", "VARCHAR(50) DEFAULT NULL COMMENT '通知分类'"),
+            ("operation_logs", "result", "VARCHAR(20) DEFAULT NULL COMMENT '执行结果'"),
+            ("pbc_objectives", "quarter", "VARCHAR(10) DEFAULT NULL COMMENT '季度'"),
+            ("pbc_objectives", "user_id", "INT DEFAULT NULL COMMENT '关联用户ID'"),
+            ("compute_requests", "applicant_id", "INT NOT NULL COMMENT '申请人ID'"),
+            ("compute_requests", "scheduled_date", "DATE DEFAULT NULL COMMENT '计划使用日期'"),
+            ("risks", "risk_level", "VARCHAR(20) DEFAULT 'medium' COMMENT '风险等级'"),
+            ("roles_permissions", "role_code", "VARCHAR(50) NOT NULL COMMENT '角色编码'"),
+            ("roles_permissions", "permission_key", "VARCHAR(100) NOT NULL COMMENT '权限键'"),
+            ("system_metrics", "metric_type", "VARCHAR(50) DEFAULT NULL COMMENT '指标类型'"),
+            ("task_dependencies", "depends_on_task_id", "INT DEFAULT NULL COMMENT '依赖任务ID'"),
+            ("user_workload", "date", "DATE NOT NULL COMMENT '日期'"),
+            ("project_templates", "template_code", "VARCHAR(50) DEFAULT NULL COMMENT '模板编码'"),
+            ("role_templates", "template_key", "VARCHAR(50) NOT NULL COMMENT '模板键'"),
+        ]
+        
+        for table_name, column_name, column_def in columns_to_add:
+            if not _column_exists(cursor, database_name, table_name, column_name):
+                cursor.execute(f"ALTER TABLE `{table_name}` ADD COLUMN `{column_name}` {column_def}")
 
         created_indexes = 0
         for table_name, index_name, columns in INDEX_DEFINITIONS:
